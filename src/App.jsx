@@ -7,10 +7,16 @@ import {
   Sun, 
   Moon, 
   Loader2, 
-  ShieldCheck,
-  CheckCircle,
   KeyRound,
   ChevronRight,
+  Shield,
+  Zap,
+  LogOut,
+  User as UserIcon,
+  Calendar,
+  Globe,
+  Copy,
+  Check,
   Eye,
   EyeOff
 } from 'lucide-react';
@@ -28,6 +34,10 @@ function LoginApp() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
+
+  // User state
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAppLoading, setIsAppLoading] = useState(true);
 
   // Flow states
   const [isSignup, setIsSignup] = useState(false);
@@ -56,6 +66,40 @@ function LoginApp() {
   // OTP-specific states
   const [otpSent, setOtpSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
+
+  // Dashboard Visual states
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  // Check if user is logged in already on app start
+  useEffect(() => {
+    const checkLoggedSession = async () => {
+      const token = localStorage.getItem('jwt_token');
+      if (!token) {
+        setIsAppLoading(false);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (response.ok) {
+          const userData = await response.json();
+          setCurrentUser(userData);
+        } else {
+          localStorage.removeItem('jwt_token');
+        }
+      } catch (err) {
+        console.error('Session verification error:', err);
+      } finally {
+        setIsAppLoading(false);
+      }
+    };
+    checkLoggedSession();
+  }, []);
 
   // Sync dark mode class with documentElement
   useEffect(() => {
@@ -158,19 +202,19 @@ function LoginApp() {
     resetErrors();
     setIsLoading(true);
 
-    // Simulate database lookup / validation check
+    // Simulate database lookup check (or just go to next step)
     setTimeout(() => {
       setIsLoading(false);
       setStep(2);
       addToast('Email verified. Choose your authentication method.', 'info');
-    }, 800);
+    }, 500);
   };
 
   // Send Simulated OTP Code
   const handleSendOTP = async () => {
     setIsLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       setOtpSent(true);
       setCountdown(59);
       setOtpError('');
@@ -204,20 +248,43 @@ function LoginApp() {
       setIsLoading(true);
 
       try {
-        await new Promise((resolve) => setTimeout(resolve, 1800));
+        const url = isSignup ? '/api/auth/signup' : '/api/auth/login';
+        const bodyPayload = isSignup 
+          ? { name, email, password }
+          : { email, password };
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyPayload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Authentication failed');
+        }
+
+        // Save token & set user session
+        localStorage.setItem('jwt_token', data.token);
+        setCurrentUser(data.user);
+
         addToast(
           isSignup 
             ? 'Account created successfully! Welcome to Nexoraa.' 
             : 'Welcome back! You have logged in successfully.', 
           'success'
         );
+
         // Clear forms
         setStep(1);
         setEmail('');
+        setName('');
         setPassword('');
         setConfirmPassword('');
       } catch (err) {
-        addToast('Authentication failed. Please check your credentials.', 'error');
+        addToast(err.message || 'Authentication failed. Please check your credentials.', 'error');
+        triggerShake();
       } finally {
         setIsLoading(false);
       }
@@ -234,6 +301,7 @@ function LoginApp() {
       setOtpError('');
       setIsLoading(true);
 
+      // OTP Login is simulated for demo, but checks standard codes
       try {
         await new Promise((resolve, reject) => {
           setTimeout(() => {
@@ -243,10 +311,22 @@ function LoginApp() {
             } else {
               reject(new Error('Invalid code'));
             }
-          }, 2000);
+          }, 1500);
         });
 
-        addToast('Verification successful! Logging you in...', 'success');
+        // Let's create or load a mock user based on the entered email
+        const token = 'mock_otp_token_jwt_' + Math.random().toString(36).substr(2, 9);
+        const mockUser = {
+          name: email.split('@')[0],
+          email: email,
+          createdAt: new Date().toISOString()
+        };
+
+        // Since it's a demo flow, we mock the OTP successful login session
+        localStorage.setItem('jwt_token', token);
+        setCurrentUser(mockUser);
+
+        addToast('Verification successful! Welcome to your dashboard.', 'success');
         setStep(1);
         setEmail('');
         setOtpCode(['', '', '', '', '', '']);
@@ -265,7 +345,18 @@ function LoginApp() {
   const handleSocialLogin = async (provider) => {
     setSocialLoading(provider);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      
+      const token = 'mock_social_token_jwt_' + Math.random().toString(36).substr(2, 9);
+      const mockUser = {
+        name: `${provider.charAt(0).toUpperCase() + provider.slice(1)} User`,
+        email: `${provider}@nexoraa-social.com`,
+        createdAt: new Date().toISOString()
+      };
+
+      localStorage.setItem('jwt_token', token);
+      setCurrentUser(mockUser);
+
       addToast(`Successfully authenticated with ${provider.charAt(0).toUpperCase() + provider.slice(1)}!`, 'success');
       setStep(1);
       setEmail('');
@@ -276,15 +367,187 @@ function LoginApp() {
     }
   };
 
+  // Logout handler
+  const handleLogout = () => {
+    localStorage.removeItem('jwt_token');
+    setCurrentUser(null);
+    addToast('You have logged out successfully.', 'info');
+  };
+
+  // Copy API key utility
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText('nx_live_cf890ea123bc6de7f384a8d0ef5a');
+    setCopiedKey(true);
+    addToast('API Token copied to clipboard!', 'success');
+    setTimeout(() => setCopiedKey(false), 2000);
+  };
+
+  // Loader during app session recovery
+  if (isAppLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Checking credentials...</span>
+      </div>
+    );
+  }
+
+  // --- POST-LOGIN USER PROFILE VIEW (DASHBOARD) ---
+  if (currentUser) {
+    const formattedDate = new Date(currentUser.createdAt).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4 md:p-6 lg:p-8 bg-slate-50 dark:bg-slate-950 transition-colors duration-300 relative">
+        <div className="aurora-bg">
+          <div className="aurora-blur absolute -top-40 -left-40 w-96 h-96 rounded-full bg-indigo-400 dark:bg-indigo-900/40"></div>
+          <div className="aurora-blur absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-violet-400 dark:bg-violet-900/40"></div>
+        </div>
+
+        <div className="relative w-full max-w-4xl rounded-3xl glass-panel shadow-2xl border border-slate-200/50 dark:border-slate-800/40 overflow-hidden z-10 p-6 md:p-10 transition-all duration-300">
+          {/* Header Controls */}
+          <div className="flex justify-between items-center w-full pb-6 border-b border-slate-200/50 dark:border-slate-800/50">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-600 shadow-md shadow-indigo-500/20">
+                <Zap className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-lg font-bold font-display tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-950 dark:from-slate-100 dark:to-slate-300">
+                Nexoraa Workspace
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                aria-label="Toggle theme mode"
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-all cursor-pointer"
+              >
+                {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl transition-all cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Log out</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Profile Content */}
+          <div className="mt-8 flex flex-col md:flex-row gap-8 text-left">
+            {/* Left Col: User Metadata card */}
+            <div className="w-full md:w-[35%] flex flex-col gap-4">
+              <div className="glass-card rounded-2xl p-6 border border-slate-200/50 dark:border-slate-800/40 shadow-sm flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center text-white text-2xl font-bold font-display shadow-lg shadow-indigo-500/20 mb-4">
+                  {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <h3 className="text-lg font-bold font-display text-slate-800 dark:text-slate-100">
+                  {currentUser.name}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 break-all max-w-full">
+                  {currentUser.email}
+                </p>
+
+                <div className="w-full h-[1px] bg-slate-200 dark:bg-slate-800 my-4" />
+
+                <div className="flex flex-col gap-3 w-full text-left">
+                  <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                    <UserIcon className="w-4 h-4 text-indigo-500" />
+                    <span>Role: <strong className="text-slate-800 dark:text-slate-200 font-semibold">Workspace Owner</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-xs text-slate-600 dark:text-slate-400">
+                    <Calendar className="w-4 h-4 text-indigo-500" />
+                    <span>Joined: <strong className="text-slate-800 dark:text-slate-200 font-medium">{formattedDate}</strong></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Col: Environment metrics & API keys */}
+            <div className="w-full md:w-[65%] flex flex-col gap-6">
+              {/* Deploy Settings */}
+              <div className="glass-card rounded-2xl p-6 border border-slate-200/50 dark:border-slate-800/40 shadow-sm">
+                <h4 className="text-sm font-bold font-display text-slate-800 dark:text-slate-100 mb-4 uppercase tracking-wider">
+                  Active Edge Deployment
+                </h4>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/30 dark:border-slate-800/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Globe className="w-4 h-4 text-indigo-500" />
+                      <span className="text-xs text-slate-600 dark:text-slate-400">Network Region</span>
+                    </div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Global (24 PoPs)</span>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-100/50 dark:bg-slate-900/50 border border-slate-200/30 dark:border-slate-800/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <Shield className="w-4 h-4 text-indigo-500" />
+                      <span className="text-xs text-slate-600 dark:text-slate-400">SSL Certificate</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse-slow"></span>
+                      <span className="text-xs font-bold text-emerald-500">Active</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Developer API Tokens */}
+              <div className="glass-card rounded-2xl p-6 border border-slate-200/50 dark:border-slate-800/40 shadow-sm flex flex-col gap-4">
+                <div>
+                  <h4 className="text-sm font-bold font-display text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                    API Tokens
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-light">
+                    Use this secret key to authenticate your serverless functions with the Nexoraa CLI.
+                  </p>
+                </div>
+
+                <div className="relative rounded-xl border border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-950/40 p-3.5 flex items-center justify-between gap-3">
+                  <code className="text-xs font-mono text-slate-800 dark:text-slate-300 break-all select-all flex-grow pr-16">
+                    {showApiKey ? 'nx_live_cf890ea123bc6de7f384a8d0ef5a' : 'nx_live_••••••••••••••••••••••••••••••••'}
+                  </code>
+                  
+                  <div className="absolute right-3 flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                      aria-label={showApiKey ? 'Hide Token' : 'Show Token'}
+                    >
+                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={copyToClipboard}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                      aria-label="Copy Token"
+                    >
+                      {copiedKey ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // --- STANDARD PRE-LOGIN AUTH VIEWS ---
   return (
     <main className="min-h-screen flex items-center justify-center p-4 md:p-6 lg:p-8 bg-slate-50 dark:bg-slate-950 transition-colors duration-300 relative">
-      {/* Background visual graphics */}
       <div className="aurora-bg">
         <div className="aurora-blur absolute -top-40 -left-40 w-96 h-96 rounded-full bg-indigo-400 dark:bg-indigo-900/40"></div>
         <div className="aurora-blur absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-violet-400 dark:bg-violet-900/40"></div>
       </div>
 
-      {/* Main card container */}
       <div className="relative w-full max-w-5xl h-full min-h-[600px] flex flex-col md:flex-row rounded-3xl glass-panel shadow-2xl border border-slate-200/50 dark:border-slate-800/40 overflow-hidden z-10 transition-all duration-300">
         
         {/* Left Side: Brand Panel */}
@@ -312,7 +575,6 @@ function LoginApp() {
               <div />
             )}
 
-            {/* Dark/Light mode toggle */}
             <button
               type="button"
               onClick={() => setIsDarkMode(!isDarkMode)}
@@ -660,7 +922,6 @@ function LoginApp() {
                             )}
                           </button>
 
-                          {/* Resend button / countdown timer */}
                           <div className="text-center">
                             {countdown > 0 ? (
                               <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
