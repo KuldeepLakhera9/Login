@@ -210,17 +210,36 @@ function LoginApp() {
     }, 500);
   };
 
-  // Send Simulated OTP Code
+  // Send Real Email OTP Code
   const handleSendOTP = async () => {
     setIsLoading(true);
+    setOtpError('');
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const res = await fetch('/api/auth/otp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to send OTP code');
+      }
+
       setOtpSent(true);
       setCountdown(59);
-      setOtpError('');
-      addToast('A 6-digit verification code has been sent to your email.', 'success');
+      
+      // If there's a devFallbackCode in response, alert user (helps presentation if SMTP isn't set up yet)
+      if (data.devFallbackCode) {
+        addToast('Developer Fallback Active. See code in notification!', 'info');
+        console.log(`%c[OTP CODE]: ${data.devFallbackCode}`, 'font-size: 20px; color: #4f46e5; font-weight: bold;');
+        alert(`Developer Fallback Active!\n\nEmail sending is not configured (EMAIL_USER / EMAIL_PASS in server/.env are blank).\n\nYour 6-digit verification code is: ${data.devFallbackCode}`);
+      } else {
+        addToast('A 6-digit verification code has been sent to your email.', 'success');
+      }
     } catch (e) {
-      addToast('Failed to send code. Please try again.', 'error');
+      console.error('OTP send error:', e);
+      addToast(e.message || 'Failed to send code. Please try again.', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -301,39 +320,32 @@ function LoginApp() {
       setOtpError('');
       setIsLoading(true);
 
-      // OTP Login is simulated for demo, but checks standard codes
       try {
-        await new Promise((resolve, reject) => {
-          setTimeout(() => {
-            const enteredCode = otpCode.join('');
-            if (enteredCode === '123456' || enteredCode === '111111') {
-              resolve();
-            } else {
-              reject(new Error('Invalid code'));
-            }
-          }, 1500);
+        const enteredCode = otpCode.join('');
+        const res = await fetch('/api/auth/otp/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code: enteredCode })
         });
 
-        // Let's create or load a mock user based on the entered email
-        const token = 'mock_otp_token_jwt_' + Math.random().toString(36).substr(2, 9);
-        const mockUser = {
-          name: email.split('@')[0],
-          email: email,
-          createdAt: new Date().toISOString()
-        };
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || 'Verification failed');
+        }
 
-        // Since it's a demo flow, we mock the OTP successful login session
-        localStorage.setItem('jwt_token', token);
-        setCurrentUser(mockUser);
+        // OTP Login is successful! Store JWT session
+        localStorage.setItem('jwt_token', data.token);
+        setCurrentUser(data.user);
 
-        addToast('Verification successful! Welcome to your dashboard.', 'success');
+        addToast('Verification successful! Welcome back.', 'success');
         setStep(1);
         setEmail('');
         setOtpCode(['', '', '', '', '', '']);
         setOtpSent(false);
       } catch (err) {
-        setOtpError('Invalid 6-digit code. Use 123456 or 111111 for simulation.');
-        addToast('Invalid verification code.', 'error');
+        console.error('OTP verify error:', err);
+        setOtpError(err.message || 'Invalid 6-digit code. Please try again.');
+        addToast(err.message || 'Invalid verification code.', 'error');
         triggerShake();
       } finally {
         setIsLoading(false);

@@ -6,8 +6,10 @@ import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 
 import User from './models/User.js';
+import OTP from './models/OTP.js';
 
 // Resolve __dirname in ES modules environment
 const __filename = fileURLToPath(import.meta.url);
@@ -211,6 +213,122 @@ app.post('/api/auth/google', async (req, res) => {
   } catch (error) {
     console.error('Google Auth Error:', error);
     res.status(500).json({ message: 'Internal server error during Google authentication', error: error.message });
+  }
+});
+
+// Email transporter configuration (Gmail SMTP)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+// 5. Send Email OTP Endpoint
+app.post('/api/auth/otp/send', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email address is required' });
+    }
+
+    // Generate random 6-digit numeric OTP code
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Save/upsert the OTP entry in MongoDB (will overwrite any previous OTP for this email)
+    await OTP.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { code: otpCode, createdAt: new Date() },
+      { upsert: true, new: true }
+    );
+
+    console.log(`Generated OTP code [${otpCode}] for: ${email}`);
+
+    // Send the email if Gmail SMTP parameters are configured
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      const mailOptions = {
+        from: `"Nexoraa Auth" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Your Nexoraa Verification Code',
+        html: `
+          <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #4f46e5; margin-bottom: 20px;">Nexoraa Verification</h2>
+            <p>Use the following 6-digit verification code to complete your login or registration:</p>
+            <div style="background-color: #f3f4f6; font-size: 24px; font-weight: bold; text-align: center; padding: 15px; border-radius: 8px; letter-spacing: 5px; margin: 20px 0; color: #1e1b4b;">
+              ${otpCode}
+            </div>
+            <p style="font-size: 12px; color: #6b7280;">This code is valid for 5 minutes. If you did not request this, you can ignore this email.</p>
+          </div>
+        `
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`Successfully sent email OTP to ${email}`);
+      res.status(200).json({ message: 'Verification code sent to your email.' });
+    } else {
+      // Fallback in case Gmail SMTP isn't configured in development
+      console.log(`[DEV FALLBACK] Gmail credentials not set. Displaying code: ${otpCode}`);
+      res.status(200).json({ 
+        message: 'Verification code generated (Developer Fallback). Check terminal output.',
+        devFallbackCode: otpCode // return code for easier local testing/presentations if not set
+      });
+    }
+  } catch (error) {
+    console.error('Send OTP Error:', error);
+    res.status(500).json({ message: 'Failed to send verification code', error: error.message });
+  }
+});
+
+// 6. Verify Email OTP Endpoint
+app.post('/api/auth/otp/verify', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({ message: 'Email and verification code are required' });
+    }
+
+    // Search for the matching active OTP record in MongoDB
+    const activeOTP = await OTP.findOne({ email: email.toLowerCase(), code });
+
+    if (!activeOTP) {
+      return res.status(400).json({ message: 'Invalid or expired verification code.' });
+    }
+
+    // OTP code matched successfully! Clear it from database
+    await OTP.deleteOne({ _id: activeOTP._id });
+
+    // Find or create user in MongoDB
+    let user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      // Create a new user (password is omitted for OTP registrations)
+      user = await User.create({
+        name: email.split('@')[0],
+        email: email.toLowerCase()
+      });
+      console.log(`Created new OTP registered user: ${email}`);
+    } else {
+      console.log(`Logged in existing OTP user: ${email}`);
+    }
+
+    // Generate local JWT token
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
+
+    res.status(200).json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Verify OTP Error:', error);
+    res.status(500).json({ message: 'Verification error', error: error.message });
   }
 });
 
