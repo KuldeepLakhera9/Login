@@ -15,9 +15,12 @@ const UserSchema = new mongoose.Schema({
     match: [/\S+@\S+\.\S+/, 'Please enter a valid email address']
   },
   password: {
-    type: String,
-    required: [true, 'Password is required'],
-    minlength: [8, 'Password must be at least 8 characters']
+    type: String
+    // Optional: will be set only for standard local accounts, omitted for OAuth
+  },
+  avatarUrl: {
+    type: String
+    // Stores Google profile photo URL
   },
   createdAt: {
     type: Date,

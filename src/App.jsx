@@ -341,29 +341,116 @@ function LoginApp() {
     }
   };
 
-  // Simulated Social Login handler
+  // Social Login handler (supports real Google OAuth 2.0)
   const handleSocialLogin = async (provider) => {
-    setSocialLoading(provider);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+    if (provider === 'google') {
+      const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
       
-      const token = 'mock_social_token_jwt_' + Math.random().toString(36).substr(2, 9);
-      const mockUser = {
-        name: `${provider.charAt(0).toUpperCase() + provider.slice(1)} User`,
-        email: `${provider}@nexoraa-social.com`,
-        createdAt: new Date().toISOString()
-      };
+      // Safety checks for Client ID configuration
+      if (!googleClientId || googleClientId.includes('dummygoogleclientid')) {
+        addToast('Google Client ID not configured. Please see README instructions.', 'error');
+        alert("To enable real Google Login:\n\n1. Create a Web OAuth Client ID in your Google Cloud Console.\n2. Add your Client ID to the root .env file as:\n   VITE_GOOGLE_CLIENT_ID=your_id_here\n3. Restart your dev server.\n\nFalling back to simulated login mode.");
+        
+        // Fallback simulated login so it doesn't block demo presentations if not set
+        setSocialLoading('google');
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          const token = 'mock_social_token_jwt_' + Math.random().toString(36).substr(2, 9);
+          const mockUser = {
+            id: 'mock_google_id_123',
+            name: 'Demo Google User',
+            email: 'google-demo@nexoraa.com',
+            avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256&auto=format&fit=crop',
+            createdAt: new Date().toISOString()
+          };
+          localStorage.setItem('jwt_token', token);
+          setCurrentUser(mockUser);
+          addToast('Successfully authenticated with Google (Simulated)!', 'success');
+        } catch (e) {
+          addToast('Simulated login failed', 'error');
+        } finally {
+          setSocialLoading(null);
+        }
+        return;
+      }
 
-      localStorage.setItem('jwt_token', token);
-      setCurrentUser(mockUser);
+      if (!window.google) {
+        addToast('Google Identity library not loaded yet. Please try again.', 'error');
+        return;
+      }
 
-      addToast(`Successfully authenticated with ${provider.charAt(0).toUpperCase() + provider.slice(1)}!`, 'success');
-      setStep(1);
-      setEmail('');
-    } catch (e) {
-      addToast(`Authentication with ${provider} failed.`, 'error');
-    } finally {
-      setSocialLoading(null);
+      setSocialLoading('google');
+      try {
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: googleClientId,
+          scope: 'email profile https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+          callback: async (tokenResponse) => {
+            if (tokenResponse.error) {
+              console.error('Google token error:', tokenResponse);
+              addToast('Google Auth popup closed or cancelled.', 'error');
+              setSocialLoading(null);
+              return;
+            }
+
+            try {
+              // Send token to our Express backend
+              const res = await fetch('/api/auth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accessToken: tokenResponse.access_token })
+              });
+
+              const data = await res.json();
+              if (!res.ok) {
+                throw new Error(data.message || 'Verification failed on server');
+              }
+
+              // Store session and user info
+              localStorage.setItem('jwt_token', data.token);
+              setCurrentUser(data.user);
+              addToast('Successfully logged in with Google!', 'success');
+              setStep(1);
+              setEmail('');
+            } catch (err) {
+              console.error('Verify error:', err);
+              addToast(err.message || 'Google verification failed.', 'error');
+            } finally {
+              setSocialLoading(null);
+            }
+          },
+        });
+
+        // Request access token (opens Google Account Chooser popup)
+        tokenClient.requestAccessToken();
+      } catch (err) {
+        console.error('Google Token Client init error:', err);
+        addToast('Failed to initialize Google Sign-In client.', 'error');
+        setSocialLoading(null);
+      }
+    } else {
+      // GitHub & Apple simulated logins
+      setSocialLoading(provider);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        
+        const token = 'mock_social_token_jwt_' + Math.random().toString(36).substr(2, 9);
+        const mockUser = {
+          name: `${provider.charAt(0).toUpperCase() + provider.slice(1)} User`,
+          email: `${provider}@nexoraa-social.com`,
+          createdAt: new Date().toISOString()
+        };
+
+        localStorage.setItem('jwt_token', token);
+        setCurrentUser(mockUser);
+
+        addToast(`Successfully authenticated with ${provider.charAt(0).toUpperCase() + provider.slice(1)}!`, 'success');
+        setStep(1);
+        setEmail('');
+      } catch (e) {
+        addToast(`Authentication with ${provider} failed.`, 'error');
+      } finally {
+        setSocialLoading(null);
+      }
     }
   };
 
@@ -445,9 +532,18 @@ function LoginApp() {
             
             {/* Overlapping Gradient Avatar */}
             <div className="relative -mt-14 mb-4 z-10 group">
-              <div className="w-28 h-28 rounded-full border-4 border-slate-50 dark:border-slate-950 bg-gradient-to-tr from-indigo-500 via-indigo-600 to-violet-600 flex items-center justify-center text-white text-3xl font-extrabold font-display shadow-xl group-hover:scale-105 transition-all duration-300">
-                {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
-              </div>
+              {currentUser.avatarUrl ? (
+                <img 
+                  src={currentUser.avatarUrl} 
+                  alt={currentUser.name} 
+                  className="w-28 h-28 rounded-full border-4 border-slate-50 dark:border-slate-950 object-cover shadow-xl group-hover:scale-105 transition-all duration-300"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-28 h-28 rounded-full border-4 border-slate-50 dark:border-slate-950 bg-gradient-to-tr from-indigo-500 via-indigo-600 to-violet-600 flex items-center justify-center text-white text-3xl font-extrabold font-display shadow-xl group-hover:scale-105 transition-all duration-300">
+                  {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
               
               {/* Pulsing Active Status Indicator */}
               <span className="absolute bottom-1 right-1 flex h-4 w-4 rounded-full border-2 border-slate-50 dark:border-slate-950 bg-emerald-500 shadow-md">

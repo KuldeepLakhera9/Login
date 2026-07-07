@@ -143,7 +143,6 @@ app.post('/api/auth/login', async (req, res) => {
     res.status(500).json({ message: 'Internal server error during login', error: error.message });
   }
 });
-
 // 3. Get Current Logged In User Profile (Protected Route)
 app.get('/api/auth/me', protect, async (req, res) => {
   try {
@@ -151,6 +150,67 @@ app.get('/api/auth/me', protect, async (req, res) => {
   } catch (error) {
     console.error('Get Profile Error:', error);
     res.status(500).json({ message: 'Internal server error retrieving user profile' });
+  }
+});
+
+// 4. Google OAuth Sign-In Endpoint
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { accessToken } = req.body;
+
+    if (!accessToken) {
+      return res.status(400).json({ message: 'No access token provided' });
+    }
+
+    // Fetch user details from Google userinfo API using the accessToken
+    const googleRes = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${accessToken}`);
+    if (!googleRes.ok) {
+      return res.status(400).json({ message: 'Failed to verify access token with Google' });
+    }
+
+    const userData = await googleRes.json();
+    const { name, email, picture } = userData;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Google account does not provide an email address' });
+    }
+
+    // Find or create user in MongoDB
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Create new user (password is omitted, avatarUrl is stored)
+      user = await User.create({
+        name: name || 'Google User',
+        email: email,
+        avatarUrl: picture
+      });
+      console.log(`Created new Google authenticated user: ${email}`);
+    } else {
+      // Update avatarUrl if it changed or wasn't set
+      if (user.avatarUrl !== picture) {
+        user.avatarUrl = picture;
+        await user.save();
+      }
+      console.log(`Logged in existing Google user: ${email}`);
+    }
+
+    // Generate our local JWT token for session management
+    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '30d' });
+
+    res.status(200).json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Google Auth Error:', error);
+    res.status(500).json({ message: 'Internal server error during Google authentication', error: error.message });
   }
 });
 
