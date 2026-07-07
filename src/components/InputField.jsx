@@ -10,6 +10,7 @@ export function InputField({
   value,
   onChange,
   onBlur,
+  onKeyDown,
   error,
   required = false,
   icon: Icon,
@@ -55,6 +56,7 @@ export function InputField({
           value={value}
           onChange={onChange}
           onBlur={onBlur}
+          onKeyDown={onKeyDown}
           required={required}
           autoComplete={autocomplete}
           inputMode={inputmode}

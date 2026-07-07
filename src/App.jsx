@@ -46,6 +46,8 @@ function LoginApp() {
 
   // Form input states
   const [email, setEmail] = useState('');
+  const [emailSuggestions, setEmailSuggestions] = useState([]);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
@@ -184,6 +186,51 @@ function LoginApp() {
   const triggerShake = () => {
     setIsFormShaking(true);
     setTimeout(() => setIsFormShaking(false), 500);
+  };
+
+  // Email domain autocomplete suggestions logic
+  const DOMAINS = ['gmail.com', 'outlook.com', 'yahoo.com', 'hotmail.com'];
+
+  const handleEmailChange = (val) => {
+    setEmail(val);
+    if (emailError) setEmailError(validateEmail(val));
+
+    if (val.includes('@')) {
+      const [localPart, domainPart] = val.split('@');
+      if (localPart && !val.endsWith('.')) {
+        const matchingDomains = DOMAINS.filter(d => d.startsWith(domainPart))
+          .map(d => `${localPart}@${d}`);
+        
+        if (matchingDomains.length > 0 && matchingDomains[0] !== val) {
+          setEmailSuggestions(matchingDomains);
+          setActiveSuggestionIndex(0);
+        } else {
+          setEmailSuggestions([]);
+        }
+      } else {
+        setEmailSuggestions([]);
+      }
+    } else {
+      setEmailSuggestions([]);
+    }
+  };
+
+  const handleEmailKeyDown = (e) => {
+    if (emailSuggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => (prev + 1) % emailSuggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestionIndex((prev) => (prev - 1 + emailSuggestions.length) % emailSuggestions.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      setEmail(emailSuggestions[activeSuggestionIndex]);
+      setEmailSuggestions([]);
+    } else if (e.key === 'Escape') {
+      setEmailSuggestions([]);
+    }
   };
 
   // Step 1: Submit Email (and Name if signing up)
@@ -697,23 +744,54 @@ function LoginApp() {
                   />
                 )}
 
-                <InputField
-                  label="Email Address"
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (emailError) setEmailError(validateEmail(e.target.value));
-                  }}
-                  onBlur={() => setEmailError(validateEmail(email))}
-                  error={emailError}
-                  required
-                  icon={Mail}
-                  autocomplete="username"
-                />
+                <div className="relative">
+                  <InputField
+                    label="Email Address"
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="name@company.com"
+                    value={email}
+                    onChange={(e) => handleEmailChange(e.target.value)}
+                    onKeyDown={handleEmailKeyDown}
+                    onBlur={() => {
+                      setEmailError(validateEmail(email));
+                      // Delay closing the dropdown so that list clicks can register first
+                      setTimeout(() => setEmailSuggestions([]), 200);
+                    }}
+                    error={emailError}
+                    required
+                    icon={Mail}
+                    autocomplete="username"
+                  />
+                  {emailSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 z-50 -mt-2 rounded-2xl bg-white/95 dark:bg-slate-900/95 border border-slate-200 dark:border-slate-800 shadow-xl backdrop-blur-md overflow-hidden max-h-48 overflow-y-auto">
+                      {emailSuggestions.map((suggestion, index) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          onClick={() => {
+                            setEmail(suggestion);
+                            setEmailSuggestions([]);
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-xs transition-colors duration-150 flex items-center justify-between cursor-pointer
+                            ${index === activeSuggestionIndex 
+                              ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold' 
+                              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                            }
+                          `}
+                        >
+                          <span>{suggestion}</span>
+                          {index === activeSuggestionIndex && (
+                            <span className="text-[9px] bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded font-mono uppercase font-bold tracking-wider">
+                              Enter
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 <button
                   type="submit"
