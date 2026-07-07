@@ -20,34 +20,38 @@ export function InputField({
   minlength,
 }) {
   const [showPassword, setShowPassword] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const isPassword = type === 'password';
   const inputType = isPassword && showPassword ? 'text' : type;
-
   const errorId = error ? `${id}-error` : undefined;
 
   return (
-    <div className="w-full flex flex-col gap-1.5 text-left group">
-      {/* Label and Required marker */}
-      <div className="flex justify-between items-center px-1">
-        <label 
-          htmlFor={id} 
-          className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400 transition-colors duration-200"
+    <div className="w-full flex flex-col gap-1 text-left group">
+      {/* Label */}
+      <div className="flex justify-between items-center px-0.5">
+        <label
+          htmlFor={id}
+          className={`text-[11px] font-bold uppercase tracking-widest transition-colors duration-200
+            ${isFocused
+              ? 'text-indigo-600 dark:text-indigo-400'
+              : 'text-slate-500 dark:text-slate-400'
+            }
+          `}
         >
           {label}
           {required && <span className="text-red-500 ml-1" aria-hidden="true">*</span>}
         </label>
       </div>
 
-      {/* Input container */}
+      {/* Input wrapper */}
       <div className="relative rounded-xl transition-all duration-300">
-        {/* Left Icon (optional) */}
+        {/* Left icon */}
         {Icon && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors duration-200">
-            <Icon className="w-5 h-5" />
+          <div className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors duration-200 ${isFocused ? 'text-indigo-500' : 'text-slate-400 dark:text-slate-500'}`}>
+            <Icon className="w-4 h-4" />
           </div>
         )}
 
-        {/* The actual Input element */}
         <input
           id={id}
           name={name}
@@ -55,7 +59,11 @@ export function InputField({
           placeholder={placeholder}
           value={value}
           onChange={onChange}
-          onBlur={onBlur}
+          onBlur={(e) => {
+            setIsFocused(false);
+            onBlur && onBlur(e);
+          }}
+          onFocus={() => setIsFocused(true)}
           onKeyDown={onKeyDown}
           required={required}
           autoComplete={autocomplete}
@@ -65,40 +73,49 @@ export function InputField({
           aria-describedby={errorId}
           aria-invalid={!!error}
           className={`
-            w-full min-h-[50px] rounded-xl text-sm border bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm
-            transition-all duration-300 ease-out outline-none
-            text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500
-            ${Icon ? 'pl-12' : 'px-4'}
-            ${isPassword ? 'pr-12' : 'pr-4'}
-            ${error 
-              ? 'border-red-500/50 dark:border-red-500/30 focus:border-red-500 focus:ring-4 focus:ring-red-500/10' 
-              : 'border-slate-200 dark:border-slate-800 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:focus:border-indigo-500/50'
+            w-full min-h-[48px] rounded-xl text-sm
+            border transition-all duration-250 outline-none
+            text-slate-800 dark:text-slate-100 
+            placeholder-slate-400 dark:placeholder-slate-600
+            bg-white/60 dark:bg-slate-900/50
+            backdrop-blur-sm
+            ${Icon ? 'pl-10' : 'px-4'}
+            ${isPassword ? 'pr-11' : 'pr-4'}
+            ${error
+              ? 'border-red-400/60 dark:border-red-500/40 focus:border-red-500 focus:ring-2 focus:ring-red-500/15'
+              : `border-slate-200 dark:border-slate-800/80
+                focus:border-indigo-400 dark:focus:border-indigo-500/60
+                focus:ring-2 focus:ring-indigo-500/12
+                hover:border-slate-300 dark:hover:border-slate-700
+              `
             }
           `}
         />
 
-        {/* Right Password Toggle (if type is password) */}
+        {/* Focus glow overlay */}
+        {isFocused && !error && (
+          <div className="absolute inset-0 rounded-xl pointer-events-none ring-2 ring-indigo-500/15 dark:ring-indigo-400/15" />
+        )}
+
+        {/* Password toggle */}
         {isPassword && (
           <button
             type="button"
-            onClick={() => setShowPassword((prev) => !prev)}
+            onClick={() => setShowPassword((p) => !p)}
             aria-pressed={showPassword}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-0.5"
           >
-            {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         )}
       </div>
 
-      {/* Error Message */}
-      <div 
-        id={errorId} 
-        aria-live="polite"
-        className="min-h-[20px] px-1 transition-all duration-200"
-      >
+      {/* Error message */}
+      <div id={errorId} aria-live="polite" className="min-h-[16px] px-0.5 transition-all duration-200">
         {error && (
-          <p className="text-xs text-red-500 font-medium animate-shake">
+          <p className="text-[11px] text-red-500 font-medium animate-shake flex items-center gap-1">
+            <span className="inline-block w-1 h-1 rounded-full bg-red-500 shrink-0" />
             {error}
           </p>
         )}
